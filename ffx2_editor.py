@@ -39,12 +39,12 @@ def carregar_tabela(path):
 
     return byte_to_char, char_to_byte
 
-# ─────────────────────────────────────────────
+
 #  DETECTAR PONTEIROS AUTOMATICAMENTE
 #  Suporta dois formatos:
 #  - 'simples': ponteiros são offsets diretos (ex: 0x0038)
 #  - 'ps2':     ponteiros têm base alta (ex: 0x00800038)
-# ─────────────────────────────────────────────
+
 def detectar_ponteiros(dados):
     if len(dados) < 8:
         return 'simples', None, []
@@ -88,9 +88,9 @@ def detectar_ponteiros(dados):
 
     return 'simples', None, ponteiros_reais
 
-# ─────────────────────────────────────────────
+# 
 #  DECODIFICAR UMA STRING A PARTIR DE UM OFFSET
-# ─────────────────────────────────────────────
+# 
 def decodificar_string(dados, offset, byte_to_char):
     resultado = ''
     pos = offset
@@ -105,9 +105,9 @@ def decodificar_string(dados, offset, byte_to_char):
         pos += 1
     return resultado
 
-# ─────────────────────────────────────────────
+# 
 #  DUMP  (binário → txt)
-# ─────────────────────────────────────────────
+#
 def dump(bin_path, tabela_path):
     byte_to_char, _ = carregar_tabela(tabela_path)
 
@@ -150,9 +150,9 @@ def dump(bin_path, tabela_path):
 
     return txt_path, len(representantes), n, formato
 
-# ─────────────────────────────────────────────
+
 #  CODIFICAR UMA STRING PARA BYTES
-# ─────────────────────────────────────────────
+
 def codificar_string(texto, char_to_byte):
     encoded = bytearray()
     j = 0
