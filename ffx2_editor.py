@@ -39,12 +39,12 @@ def carregar_tabela(path):
 
     return byte_to_char, char_to_byte
 
-
+# ─────────────────────────────────────────────
 #  DETECTAR PONTEIROS AUTOMATICAMENTE
 #  Suporta dois formatos:
 #  - 'simples': ponteiros são offsets diretos (ex: 0x0038)
 #  - 'ps2':     ponteiros têm base alta (ex: 0x00800038)
-
+# ─────────────────────────────────────────────
 def detectar_ponteiros(dados):
     if len(dados) < 8:
         return 'simples', None, []
@@ -88,9 +88,9 @@ def detectar_ponteiros(dados):
 
     return 'simples', None, ponteiros_reais
 
-# 
+# ─────────────────────────────────────────────
 #  DECODIFICAR UMA STRING A PARTIR DE UM OFFSET
-# 
+# ─────────────────────────────────────────────
 def decodificar_string(dados, offset, byte_to_char):
     resultado = ''
     pos = offset
@@ -105,9 +105,9 @@ def decodificar_string(dados, offset, byte_to_char):
         pos += 1
     return resultado
 
-# 
+# ─────────────────────────────────────────────
 #  DUMP  (binário → txt)
-#
+# ─────────────────────────────────────────────
 def dump(bin_path, tabela_path):
     byte_to_char, _ = carregar_tabela(tabela_path)
 
@@ -150,9 +150,9 @@ def dump(bin_path, tabela_path):
 
     return txt_path, len(representantes), n, formato
 
-
+# ─────────────────────────────────────────────
 #  CODIFICAR UMA STRING PARA BYTES
-
+# ─────────────────────────────────────────────
 def codificar_string(texto, char_to_byte):
     encoded = bytearray()
     j = 0
@@ -262,12 +262,125 @@ def insert(bin_path, txt_path, tabela_path):
     return out_path
 
 # ─────────────────────────────────────────────
+#  VERIFICAR  (binário traduzido vs dump)
+# ─────────────────────────────────────────────
+def verificar(bin_orig_path, bin_trad_path, dump_path, tabela_path):
+    byte_to_char, _ = carregar_tabela(tabela_path)
+
+    def extrair_strings(path):
+        with open(path, 'rb') as f:
+            dados = f.read()
+        formato, base, ponteiros = detectar_ponteiros(dados)
+        visto = set()
+        resultado = {}
+        for i, ptr in enumerate(ponteiros):
+            if ptr not in visto:
+                visto.add(ptr)
+                resultado[i] = decodificar_string(dados, ptr, byte_to_char)
+        return resultado, len(ponteiros)
+
+    orig_strings, orig_n = extrair_strings(bin_orig_path)
+    trad_strings, trad_n = extrair_strings(bin_trad_path)
+
+    # Ler índices do dump
+    dump_indices = set()
+    with open(dump_path, 'r', encoding='utf-8') as f:
+        for linha in f:
+            if linha.startswith('['):
+                try:
+                    dump_indices.add(int(linha[1:5]))
+                except ValueError:
+                    pass
+
+    relatorio = []
+    alertas = 0
+
+    # 1. Contagem de ponteiros
+    relatorio.append(f"Strings únicas — Original: {len(orig_strings)}  |  Traduzido: {len(trad_strings)}")
+    relatorio.append(f"Total ponteiros — Original: {orig_n}  |  Traduzido: {trad_n}")
+
+    if orig_n != trad_n:
+        relatorio.append("⚠️  ATENÇÃO: número de ponteiros diferente!")
+        alertas += 1
+    else:
+        relatorio.append(f"✅  Ponteiros: contagem correta ({orig_n})")
+
+    # 2. Strings fora do dump
+    faltando = [i for i in orig_strings if i not in dump_indices]
+    nao_vazias = [(i, orig_strings[i]) for i in faltando if orig_strings[i].strip()]
+    if nao_vazias:
+        relatorio.append(f"\n⚠️  {len(nao_vazias)} string(s) com conteúdo fora do dump:")
+        for i, t in nao_vazias:
+            relatorio.append(f"   [{i:04d}] {t[:60]}")
+        alertas += 1
+    else:
+        relatorio.append("✅  Todas as strings com conteúdo estão no dump")
+
+    # 3. Strings em inglês no traduzido
+    import re
+    # Palavras/formas exclusivamente inglesas — baixo risco de falso positivo
+    palavras_en_fortes = [
+        "you've", "you're", "you'll", "you'd", "i've", "i'm", "i'll",
+        "don't", "didn't", "doesn't", "won't", "can't", "isn't", "wasn't",
+        "haven't", "hadn't", "there's", "that's", "it's", "let's",
+        " the ", " their ", " them ", " they ", " your ", " yourself ",
+        " you ", "you!", " and ", " but ", " with ", " from ", " what ",
+        " this ", " that ", " will ", " shall ", " our ", " we ", " us ",
+        " she ", " her ", " him ", " his ", " very ", " just ", " only ",
+        " even ", " some ", " more ", " much ", " many ", " here ",
+        " there ", " when ", " where ", " like ", " know ", " think ",
+        " make ", " been ", " have ", " had ", " has ",
+    ]
+    # Termos do jogo que podem conter palavras inglesas — ignorar
+    termos_jogo = [
+        'gullwings', 'cactuar', 'celsius', 'bikanel', 'spira', 'blitzball',
+        'machina', 'hover', 'oasis', 'sphere', 'yuna', 'rikku', 'paine',
+        'marnela', 'nhadala', 'gippal', 'nooj', 'baralai', 'crimson',
+        'assembly', 'coin', 'rank', 'sandbox', 'attack', 'defense',
+        'special', 'scrap', 'metal', 'save', 'offline', 'done', 'zoom',
+    ]
+    suspeitas = []
+    for i, t in trad_strings.items():
+        tl = t.lower()
+        # Remove tags [XX] para não confundir a busca
+        tl_limpo = re.sub(r'\[[0-9a-f]{2}\]', ' ', tl)
+        # Se for predominantemente termo do jogo, só marca se tiver forma verbal inglesa clara
+        eh_termo_jogo = any(trm in tl_limpo for trm in termos_jogo)
+        formas_verbais = ["you've","you're","you'll","don't","didn't","doesn't",
+                          "won't","can't","isn't","wasn't","haven't","it's","let's"]
+        if eh_termo_jogo:
+            if any(p in tl_limpo for p in formas_verbais):
+                suspeitas.append((i, t))
+        else:
+            if any(p in tl_limpo for p in palavras_en_fortes):
+                suspeitas.append((i, t))
+    if suspeitas:
+        relatorio.append(f"\n⚠️  {len(suspeitas)} possível(is) string(s) em inglês:")
+        for i, t in suspeitas[:10]:
+            relatorio.append(f"   [{i:04d}] {t[:60]}")
+        if len(suspeitas) > 10:
+            relatorio.append(f"   ... e mais {len(suspeitas)-10}")
+        alertas += 1
+    else:
+        relatorio.append("✅  Nenhuma string em inglês detectada")
+
+    # Resumo
+    relatorio.append(f"\n{'='*44}")
+    if alertas == 0:
+        relatorio.append("✅  TUDO CERTO! Arquivo pronto para uso.")
+    else:
+        relatorio.append(f"⚠️  {alertas} alerta(s) encontrado(s). Revise antes de usar.")
+
+    return "\n".join(relatorio)
+
+
+# ─────────────────────────────────────────────
 #  INTERFACE GRÁFICA
 # ─────────────────────────────────────────────
 def main():
     root = tk.Tk()
     root.title("FFX-2 Editor de Texto")
-    root.geometry("480x360")
+    root.geometry("480x480")
     root.resizable(False, False)
     root.configure(bg="#1e1e2e")
 
@@ -329,6 +442,53 @@ def main():
     tk.Button(frame_ins, text="Selecionar .bin e .txt e Injetar", bg=cor_btn, fg="#1e1e2e",
               font=("Helvetica", 10, "bold"), relief="flat", padx=12, pady=6,
               command=btn_insert).pack()
+
+    # ── VERIFICAR ──
+    frame_ver = tk.LabelFrame(root, text=" 3. Verificar tradução ", bg=cor_bg,
+                              fg=cor_sub, font=("Helvetica", 10, "bold"), padx=10, pady=8)
+    frame_ver.pack(fill="x", padx=20, pady=14)
+
+    def btn_verificar():
+        bin_orig = filedialog.askopenfilename(title="Selecione o .bin ORIGINAL",
+                                             filetypes=[("Binários", "*.bin"), ("Todos", "*.*")])
+        if not bin_orig:
+            return
+        bin_trad = filedialog.askopenfilename(title="Selecione o .bin TRADUZIDO",
+                                             filetypes=[("Binários", "*.bin"), ("Todos", "*.*")])
+        if not bin_trad:
+            return
+        dump_path = filedialog.askopenfilename(title="Selecione o .txt do DUMP",
+                                              filetypes=[("Texto", "*.txt"), ("Todos", "*.*")])
+        if not dump_path:
+            return
+        try:
+            relatorio = verificar(bin_orig, bin_trad, dump_path, TABELA_PATH)
+            # Janela de resultado
+            win = tk.Toplevel(root)
+            win.title("Relatório de Verificação")
+            win.configure(bg="#1e1e2e")
+            win.geometry("560x400")
+            txt = tk.Text(win, bg="#181825", fg="#cdd6f4", font=("Courier", 9),
+                          wrap="word", padx=10, pady=10)
+            txt.pack(fill="both", expand=True, padx=10, pady=10)
+            txt.insert("1.0", relatorio)
+            txt.config(state="disabled")
+            # Colorir linhas de alerta/ok
+            txt.config(state="normal")
+            for tag, cor in [("ok", "#a6e3a1"), ("warn", "#f38ba8")]:
+                txt.tag_config(tag, foreground=cor)
+            for i, linha in enumerate(relatorio.splitlines(), start=1):
+                if "✅" in linha:
+                    txt.tag_add("ok", f"{i}.0", f"{i}.end")
+                elif "⚠️" in linha:
+                    txt.tag_add("warn", f"{i}.0", f"{i}.end")
+            txt.config(state="disabled")
+        except Exception as e:
+            messagebox.showerror("Erro na Verificação", str(e))
+
+    tk.Button(frame_ver, text="Selecionar .bin original, traduzido e .txt", bg="#cba6f7", fg="#1e1e2e",
+              font=("Helvetica", 10, "bold"), relief="flat", padx=12, pady=6,
+              command=btn_verificar).pack()
 
     root.mainloop()
 
