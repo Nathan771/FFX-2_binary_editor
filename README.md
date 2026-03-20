@@ -19,7 +19,7 @@
 
 ## 📸 Demonstração
 
-![CrystalTile2 + Remaster](https://raw.githubusercontent.com/Nathan771/FFX-2_binary_editor/main/screenshot.png)
+![CrystalTile2 + Remaster](https://raw.githubusercontent.com/Nathan771/FFX-2_binary_editor/screenshot.png)
 
 > *Esquerda: análise do binário no CrystalTile2. Direita: diálogo traduzido rodando o jogo.*
 
