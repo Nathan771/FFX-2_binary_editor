@@ -51,12 +51,32 @@ def detectar_ponteiros(dados):
 
     primeiro = struct.unpack_from('<I', dados, 0)[0]
 
-    # Tentar formato PS2 (base alta)
+    # ── Formato FLAG3 ──────────────────────────────────────────────────────
+    # Offset real nos 3 bytes baixos (24 bits), byte alto é flag preservado.
+    # Detectado quando: flag0 != 0, offset0 válido, e há pelo menos 2 flags
+    # diferentes na tabela de ponteiros.
+    offset_flag3 = primeiro & 0x00FFFFFF
+    flag0        = (primeiro >> 24) & 0xFF
+    if flag0 != 0 and 0 < offset_flag3 < len(dados):
+        n_candidato = offset_flag3 // 4
+        flags_lista = []
+        offsets_lista = []
+        for i in range(min(n_candidato, len(dados) // 4)):
+            val = struct.unpack_from('<I', dados, i * 4)[0]
+            off = val & 0x00FFFFFF
+            flg = (val >> 24) & 0xFF
+            flags_lista.append(flg)
+            # Offset inválido vira 0 (string vazia), não aborta
+            offsets_lista.append(off if 0 <= off < len(dados) else 0)
+        # Confirma flag3 se houver pelo menos 2 flags diferentes
+        if len(set(flags_lista)) > 1:
+            return 'flag3', flags_lista, offsets_lista
+
+    # ── Formato PS2 (base uniforme alta) ──────────────────────────────────
     base_candidata = primeiro & 0xFF800000
     if base_candidata != 0:
         offset_real = primeiro - base_candidata
         if 0 < offset_real < len(dados):
-            # Confirmar lendo mais ponteiros
             ponteiros_reais = []
             for i in range(len(dados) // 4):
                 val = struct.unpack_from('<I', dados, i * 4)[0]
@@ -71,7 +91,7 @@ def detectar_ponteiros(dados):
             if ponteiros_reais:
                 return 'ps2', base_candidata, ponteiros_reais
 
-    # Formato simples
+    # ── Formato simples (offsets diretos) ─────────────────────────────────
     n = primeiro // 4
     n = min(n, len(dados) // 4)
     ponteiros_reais = []
@@ -79,11 +99,9 @@ def detectar_ponteiros(dados):
         if i * 4 + 4 > len(dados):
             break
         val = struct.unpack_from('<I', dados, i * 4)[0]
-        # Aceita ponteiro se estiver dentro do arquivo (incluindo 0 que pode ser string vazia)
         if 0 <= val < len(dados):
             ponteiros_reais.append(val)
         else:
-            # Não quebra — apenas ignora ponteiros inválidos
             ponteiros_reais.append(0)
 
     return 'simples', None, ponteiros_reais
@@ -140,11 +158,16 @@ def dump(bin_path, tabela_path):
         for rep_idx, texto in representantes:
             f.write(f'[{rep_idx:04d}]{texto}\n')
 
-    # Salvar mapeamento de grupos (inclui formato e base)
+    # Salvar mapeamento de grupos (inclui formato, base e flags)
     map_path = os.path.splitext(bin_path)[0] + '_grupos.txt'
     with open(map_path, 'w', encoding='utf-8') as f:
         f.write(f'formato={formato}\n')
-        f.write(f'base={base if base is not None else 0}\n')
+        if formato == 'flag3':
+            import json as _json
+            f.write(f'base=0\n')
+            f.write(f'flags={_json.dumps(base)}\n')  # base contém lista de flags
+        else:
+            f.write(f'base={base if base is not None else 0}\n')
         for idx, rep in grupo_map.items():
             f.write(f'{idx}={rep}\n')
 
@@ -197,6 +220,7 @@ def insert(bin_path, txt_path, tabela_path):
     formato_salvo = formato
     base_salva = base
 
+    flags_salvas = None
     if os.path.exists(map_path):
         with open(map_path, 'r', encoding='utf-8') as f:
             for linha in f:
@@ -206,6 +230,9 @@ def insert(bin_path, txt_path, tabela_path):
                 elif linha.startswith('base='):
                     b = int(linha.split('=', 1)[1])
                     base_salva = b if b != 0 else None
+                elif linha.startswith('flags='):
+                    import json as _json
+                    flags_salvas = _json.loads(linha.split('=', 1)[1])
                 elif '=' in linha:
                     a, b = linha.split('=', 1)
                     grupo_map[int(a)] = int(b)
@@ -241,8 +268,12 @@ def insert(bin_path, txt_path, tabela_path):
     novos_ponteiros = []
     offset_atual = inicio_dados
 
-    for s in strings_codificadas:
-        if formato_salvo == 'ps2' and base_salva is not None:
+    for i, s in enumerate(strings_codificadas):
+        if formato_salvo == 'flag3' and flags_salvas is not None:
+            # Preserva o flag original no byte alto
+            flag = flags_salvas[i] if i < len(flags_salvas) else 0
+            novos_ponteiros.append((flag << 24) | (offset_atual & 0x00FFFFFF))
+        elif formato_salvo == 'ps2' and base_salva is not None:
             novos_ponteiros.append(offset_atual + base_salva)
         else:
             novos_ponteiros.append(offset_atual)
