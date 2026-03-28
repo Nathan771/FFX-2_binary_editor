@@ -3,14 +3,14 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-# ─────────────────────────────────────────────
+# 
 #  CAMINHO FIXO DA TABELA
-# ─────────────────────────────────────────────
+# 
 TABELA_PATH = r"C:\Users\natha\Documents\FFX2_PROJETO\tabela_binarios_Ffx2.tbl"
 
-# ─────────────────────────────────────────────
+# 
 #  CARREGAR TABELA  (BYTE -> CHAR  e  CHAR -> BYTE)
-# ─────────────────────────────────────────────
+# 
 def carregar_tabela(path):
     byte_to_char = {}
     char_to_byte = {}
@@ -39,19 +39,19 @@ def carregar_tabela(path):
 
     return byte_to_char, char_to_byte
 
-# ─────────────────────────────────────────────
+# 
 #  DETECTAR PONTEIROS AUTOMATICAMENTE
 #  Suporta dois formatos:
 #  - 'simples': ponteiros são offsets diretos (ex: 0x0038)
 #  - 'ps2':     ponteiros têm base alta (ex: 0x00800038)
-# ─────────────────────────────────────────────
+# 
 def detectar_ponteiros(dados):
     if len(dados) < 8:
         return 'simples', None, []
 
     primeiro = struct.unpack_from('<I', dados, 0)[0]
 
-    # ── Formato FLAG3 ──────────────────────────────────────────────────────
+    #  Formato FLAG3 
     # Offset real nos 3 bytes baixos (24 bits), byte alto é flag preservado.
     # Detectado quando: flag0 != 0, offset0 válido, e há pelo menos 2 flags
     # diferentes na tabela de ponteiros.
@@ -72,7 +72,7 @@ def detectar_ponteiros(dados):
         if len(set(flags_lista)) > 1:
             return 'flag3', flags_lista, offsets_lista
 
-    # ── Formato PS2 (base uniforme alta) ──────────────────────────────────
+    #  Formato PS2 (base uniforme alta)
     base_candidata = primeiro & 0xFF800000
     if base_candidata != 0:
         offset_real = primeiro - base_candidata
@@ -91,7 +91,7 @@ def detectar_ponteiros(dados):
             if ponteiros_reais:
                 return 'ps2', base_candidata, ponteiros_reais
 
-    # ── Formato simples (offsets diretos) ─────────────────────────────────
+    #  Formato simples (offsets diretos) 
     n = primeiro // 4
     n = min(n, len(dados) // 4)
     ponteiros_reais = []
@@ -106,9 +106,9 @@ def detectar_ponteiros(dados):
 
     return 'simples', None, ponteiros_reais
 
-# ─────────────────────────────────────────────
+# 
 #  DECODIFICAR UMA STRING A PARTIR DE UM OFFSET
-# ─────────────────────────────────────────────
+# 
 def decodificar_string(dados, offset, byte_to_char):
     resultado = ''
     pos = offset
